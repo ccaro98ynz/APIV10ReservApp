@@ -1,0 +1,134 @@
+--STORED PROCEDURES
+--PROC ADD-USER
+CREATE PROCEDURE ra_AddUser
+    @Name       VARCHAR(30),
+    @LastName   VARCHAR(30),
+    @Phone      VARCHAR(30),
+    @Email      VARCHAR(40),
+    @Password   VARCHAR(20),
+    @UserType   BIT
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        -- Validación de duplicados en Email o Phone dentro de Customers o Hosts
+        IF EXISTS (
+            SELECT 1 FROM Customers 
+            WHERE Email = @Email OR PhoneNumber = @Phone
+        )
+        OR EXISTS (
+            SELECT 1 FROM Hosts
+            WHERE Email = @Email OR PhoneNumber = @Phone
+        )
+        BEGIN
+            THROW 52001, 'El correo o número telefónico ya está asociado a otro usuario.', 1;
+        END
+        -- Inserción según el tipo de usuario
+        IF (@UserType = 1)
+        BEGIN
+            INSERT INTO Customers (Name, LastName, PhoneNumber, Email, PasswordHash, Status)
+            VALUES (
+                @Name, 
+                @LastName, 
+                @Phone, 
+                @Email, 
+                ENCRYPTBYPASSPHRASE('ReservApp', @Password), 
+                1
+            );
+        END
+        ELSE
+        BEGIN
+            INSERT INTO Hosts (Name, LastName, PhoneNumber, Email, PasswordHash, Status)
+            VALUES (
+                @Name, 
+                @LastName, 
+                @Phone, 
+                @Email, 
+                ENCRYPTBYPASSPHRASE('ReservApp', @Password), 
+                1
+            );
+        END
+
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK;
+        THROW;
+    END CATCH
+END;
+--PROC ADD-PROPERTY
+CREATE PROCEDURE ra_AddProperty
+@Street VARCHAR(40),@City VARCHAR(40),@Area VARCHAR(40),
+@Country VARCHAR(40),@PostalCode INT,@OutsideNumber INT,
+@HostID INT,@Status BIT, @Type VARCHAR(20),
+@ExGuests INT,@Price Money,@Description VARCHAR(100)
+AS BEGIN
+	BEGIN TRY
+	BEGIN TRANSACTION;
+	INSERT INTO AddressInfo VALUES(@Street,@City,@Area,@Country,@PostalCode,@OutsideNumber)
+	DECLARE @Next INT= SCOPE_IDENTITY();
+	INSERT INTO PropertiesInfo VALUES(@HostID,@Next,@Status,@Type,@ExGuests,@Price,@Description)
+	COMMIT
+	END TRY
+	BEGIN CATCH
+	THROW;
+	ROLLBACK
+	END CATCH
+END
+--PROC MAKE-RESERVATION
+CREATE PROCEDURE ra_MakeReservation
+    @CustomerID INT,
+    @PlaceID INT,
+    @Travelers INT,
+    @CheckInDate DATETIME,
+    @CheckOutDate DATETIME,
+    @PaymentType VARCHAR(10)
+AS
+BEGIN
+    -- ... (Validación de fechas aquí) ...
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- 1. Bloqueo y Verificación de Disponibilidad (El cambio crítico está aquí)
+        DECLARE @Superposiciones INT;
+        -- Aplicamos UPDLOCK (actualización) y HOLDLOCK (persistencia)
+        -- al consultar ReservationData para evitar que otra transacción modifique o inserte
+        -- una reserva para esa misma propiedad hasta que esta transacción termine.
+        SELECT @Superposiciones = COUNT(*)
+        FROM ReservationData WITH (UPDLOCK, HOLDLOCK)
+        WHERE PlaceID = @PlaceID
+          AND (
+              @CheckInDate < CheckOutDate
+          AND @CheckOutDate > CheckInDate
+          );
+        IF @Superposiciones > 0
+        BEGIN
+            -- Lanzar error si no está disponible (debido a otra transacción que acaba de ganar)
+            THROW 50002, 'La propiedad no está disponible en las fechas seleccionadas debido a una reserva simultánea.', 1;
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+        -- 2. Crear la Reserva (Esta inserción es segura debido al bloqueo anterior)
+        INSERT INTO ReservationData (CustomerID, PlaceID, Travelers, CheckInDate, CheckOutDate)
+        VALUES (@CustomerID, @PlaceID, @Travelers, @CheckInDate, @CheckOutDate);
+
+        DECLARE @NewReservID INT = SCOPE_IDENTITY();
+
+        -- 3. Procesar Pago Inicial (usando la función para calcular el monto)
+        DECLARE @MontoTotal MONEY = dbo.TotalReserv(@NewReservID);
+        INSERT INTO Payments (ReservID, Payment)
+        VALUES (@NewReservID, @PaymentType);
+        DECLARE @NewPaymentID INT = SCOPE_IDENTITY();
+        -- 4. Registrar la Venta
+        INSERT INTO Sales (PaymentID, SaleDate)
+        VALUES (@NewPaymentID, GETDATE());
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        -- ... (Manejo de errores y ROLLBACK) ...
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+

@@ -1,0 +1,69 @@
+--Functions
+-- -GET-TOTAL-OF-RESERV
+CREATE FUNCTION fn_TotalReserv(@ReservID INT)
+RETURNS MONEY
+AS
+BEGIN
+    DECLARE @TotalPrice MONEY;
+    DECLARE @DaysOfReserv INT;
+    DECLARE @PricexDay MONEY;
+    -- 1. Calcular el número de días de la reserva
+    SELECT @DaysOfReserv = DATEDIFF(DAY, CheckInDate, CheckOutDate)
+    FROM ReservationData
+    WHERE ReservID = @ReservID;
+
+    -- 2. Obtener el precio por noche de la propiedad asociada
+    SELECT @PricexDay = PI.Price
+    FROM ReservationData RD
+    JOIN PropertiesInfo PI ON RD.PlaceID = PI.PlaceID
+    WHERE RD.ReservID = @ReservID;
+    -- 3. Calcular el precio total
+    SET @TotalPrice = @DaysOfReserv * @PricexDay;
+    RETURN @TotalPrice;
+END;
+--GET RATING OF A PROPERTY
+CREATE FUNCTION fn_Rating (@PlaceID INT)
+RETURNS DECIMAL(3, 2)
+AS
+BEGIN
+    DECLARE @Promedio DECIMAL(3, 2);
+
+    SELECT @Promedio = AVG(CAST(R.Rating AS DECIMAL(3, 2)))
+    FROM Reviews R
+    INNER JOIN ReservationData RD ON R.ReservID = RD.ReservID
+    WHERE RD.PlaceID = @PlaceID;                                 
+    -- Si no hay reseñas, devolver 0.00
+    RETURN ISNULL(@Promedio, 0.00);
+END;
+GO
+--Verify Disponibility
+CREATE OR ALTER FUNCTION fn_VerifyDisp (
+    @PlaceID INT,
+    @CheckIn DATE,
+    @CheckOut DATE
+)
+RETURNS BIT
+AS
+BEGIN
+    DECLARE @Superposiciones INT;
+    DECLARE @Disponible BIT; -- Variable para almacenar el resultado final
+
+    -- 1. Buscar reservas existentes que se superpongan con el nuevo rango
+    SELECT @Superposiciones = COUNT(*)
+    FROM ReservationData
+    WHERE PlaceID = @PlaceID
+    AND (
+          @CheckIn < CheckOutDate
+      AND @CheckOut > CheckInDate
+      );
+
+    -- 2. Asignar el valor de retorno a la variable @Disponible
+    IF @Superposiciones = 0
+        SET @Disponible = 1; -- Disponible
+    ELSE
+        SET @Disponible = 0; -- No disponible
+
+    -- 3. La única y última sentencia RETURN
+    RETURN @Disponible;
+END;
+GO
