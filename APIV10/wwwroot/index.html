@@ -1,0 +1,230 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Clientes - ReservApp</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 20px;
+        }
+
+        .card {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border: none;
+        }
+
+        .response-box {
+            background: #212529;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 15px;
+            border-radius: 5px;
+            height: 150px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1 class="text-center mb-4 text-primary">🏥 ReservApp - Panel de Clientes</h1>
+
+        <div class="row">
+            <div class="col-md-6">
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="section-title">➕ Nuevo Cliente</h5>
+                        <div class="row g-2">
+                            <div class="col-6"><input type="text" id="cName" class="form-control" placeholder="Nombre"></div>
+                            <div class="col-6"><input type="text" id="cLastName" class="form-control" placeholder="Apellido"></div>
+                            <div class="col-6"><input type="text" id="cPhone" class="form-control" placeholder="Teléfono"></div>
+                            <div class="col-6"><input type="email" id="cEmail" class="form-control" placeholder="Email"></div>
+                            <div class="col-12"><input type="password" id="cPass" class="form-control" placeholder="Contraseña"></div>
+                        </div>
+                        <button class="btn btn-success w-100 mt-3" onclick="crearCliente()">Guardar Cliente</button>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="section-title">✏️ Actualizar Cliente</h5>
+                        <input type="number" id="uId" class="form-control mb-2" placeholder="ID del Cliente a modificar">
+                        <div class="row g-2">
+                            <div class="col-6"><input type="text" id="uName" class="form-control" placeholder="Nuevo Nombre"></div>
+                            <div class="col-6"><input type="text" id="uLastName" class="form-control" placeholder="Nuevo Apellido"></div>
+                            <div class="col-6"><input type="text" id="uPhone" class="form-control" placeholder="Nuevo Teléfono"></div>
+                            <div class="col-6"><input type="email" id="uEmail" class="form-control" placeholder="Nuevo Email"></div>
+                            <div class="col-12 form-check ms-2">
+                                <input type="checkbox" id="uStatus" class="form-check-input">
+                                <label class="form-check-label">Cliente Activo</label>
+                            </div>
+                        </div>
+                        <button class="btn btn-warning w-100 mt-3" onclick="actualizarCliente()">Actualizar Datos</button>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body border-danger border-2">
+                        <h5 class="section-title text-danger">🗑️ Eliminar Cliente</h5>
+                        <div class="input-group">
+                            <input type="number" id="dId" class="form-control" placeholder="ID del Cliente">
+                            <button class="btn btn-danger" onclick="eliminarCliente()">Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="col-md-6">
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="m-0">📋 Lista de Clientes</h5>
+                            <button class="btn btn-primary btn-sm" onclick="listarClientes()">🔄 Refrescar</button>
+                        </div>
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            <ul class="list-group" id="listaClientes">
+                                <li class="list-group-item text-muted">Carga la lista para ver datos...</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h5>📟 Respuesta del Servidor</h5>
+                        <div id="responseArea" class="response-box">Esperando acción...</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Usamos ruta relativa. Esto asume que el HTML está en el mismo servidor que la API.
+        const API_URL = "/Customers";
+
+        function logResponse(data) {
+            const area = document.getElementById('responseArea');
+            const timestamp = new Date().toLocaleTimeString();
+            area.innerText = `[${timestamp}] \n` + JSON.stringify(data, null, 2);
+        }
+
+        // --- 1. LISTAR (GET) ---
+        async function listarClientes() {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+
+                const lista = document.getElementById('listaClientes');
+                lista.innerHTML = ""; // Limpiar
+
+                if (data.length === 0) {
+                    lista.innerHTML = '<li class="list-group-item">No hay clientes registrados</li>';
+                    return;
+                }
+
+                data.forEach(c => {
+                    const li = document.createElement('li');
+                    li.className = "list-group-item d-flex justify-content-between align-items-center";
+                    li.innerHTML = `
+                        <div>
+                            <strong>#${c.customerId} ${c.name} ${c.lastName}</strong><br>
+                            <small class="text-muted">${c.email}</small>
+                        </div>
+                        <span class="badge ${c.status ? 'bg-success' : 'bg-secondary'}">${c.status ? 'Activo' : 'Inactivo'}</span>
+                    `;
+                    lista.appendChild(li);
+                });
+                logResponse({ message: `Se cargaron ${data.length} clientes` });
+            } catch (error) {
+                logResponse({ error: error.message });
+            }
+        }
+
+        // --- 2. CREAR (POST) ---
+        async function crearCliente() {
+            const customer = {
+                name: document.getElementById('cName').value,
+                lastName: document.getElementById('cLastName').value,
+                phoneNumber: document.getElementById('cPhone').value,
+                email: document.getElementById('cEmail').value,
+                password: document.getElementById('cPass').value
+            };
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(customer)
+                });
+                const result = await response.json();
+                logResponse(result);
+                if (response.ok) listarClientes(); // Recargar lista
+            } catch (error) {
+                logResponse({ error: error.message });
+            }
+        }
+
+        // --- 3. ACTUALIZAR (PUT) ---
+        async function actualizarCliente() {
+            const id = document.getElementById('uId').value;
+            if (!id) return alert("Falta el ID");
+
+            const customer = {
+                name: document.getElementById('uName').value || null, // Envía null si está vacío
+                lastName: document.getElementById('uLastName').value || null,
+                phoneNumber: document.getElementById('uPhone').value || null,
+                email: document.getElementById('uEmail').value || null,
+                status: document.getElementById('uStatus').checked
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(customer)
+                });
+                const result = await response.json();
+                logResponse(result);
+                if (response.ok) listarClientes();
+            } catch (error) {
+                logResponse({ error: error.message });
+            }
+        }
+
+        // --- 4. ELIMINAR (DELETE) ---
+        async function eliminarCliente() {
+            const id = document.getElementById('dId').value;
+            if (!id) return alert("Falta el ID");
+            if (!confirm("¿Seguro? Esto no se puede deshacer.")) return;
+
+            try {
+                const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+                logResponse(result);
+                if (response.ok) listarClientes();
+            } catch (error) {
+                logResponse({ error: error.message });
+            }
+        }
+
+        // Cargar lista al iniciar
+        listarClientes();
+
+    </script>
+</body>
+</html>
